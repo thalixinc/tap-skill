@@ -254,7 +254,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tap"
+name = "tap-skill"
 version = "0.1.0"
 dependencies = [
  "clap",

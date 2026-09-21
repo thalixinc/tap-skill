@@ -1,16 +1,16 @@
 [package]
-name = "tap"
+name = "tap-skill"
 version = "0.1.0"
 edition = "2021"
 authors = ["Thalix Inc"]
 description = "Traceable Acceptance Pack (TAP): Claims → Use Cases → Acceptance Tests"
-repository = "https://github.com/thalixinc/tap"
+repository = "https://github.com/thalixinc/tap-skill"
 license = "MIT"
 keywords = ["requirements", "traceability", "testing", "design", "agent"]
 categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
-name = "tap"
+name = "tap-skill"
 path = "src/main.rs"
 
 [dependencies]

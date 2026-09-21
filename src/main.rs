@@ -9,11 +9,11 @@ use std::process::Command;
 
 static SKILLS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/skills");
 
-const REPO: &str = "https://github.com/thalixinc/tap";
+const REPO: &str = "https://github.com/thalixinc/tap-skill";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser)]
-#[command(name = "tap")]
+#[command(name = "tap-skill")]
 #[command(about = "Traceable Acceptance Pack (TAP): Claims → Use Cases → Acceptance Tests", long_about = None)]
 #[command(version = VERSION)]
 struct Cli {
@@ -40,20 +40,19 @@ enum Commands {
     },
     #[command(about = "Install TAP skill into an agent skill directory")]
     Install {
-        #[arg(long, help = "Install to Cursor skill directory")]
-        cursor: bool,
-        #[arg(long, help = "Install to Claude skill directory")]
-        claude: bool,
-        #[arg(long, help = "Install to Codex skill directory")]
-        codex: bool,
-        #[arg(long, value_name = "DIR", help = "Install to custom directory")]
-        path: Option<PathBuf>,
         #[arg(
             long,
-            value_name = "DIR",
-            help = "Install to target directory (same as --path)"
+            value_delimiter = ',',
+            help = "Harness(es) to install to: cursor, claude, codex, or custom path (comma-separated for multiple)"
         )]
-        target: Option<PathBuf>,
+        harness: Option<Vec<String>>,
+        #[arg(
+            long,
+            help = "Scope: user (global) or project (local to cwd). Interactive prompt if not specified."
+        )]
+        scope: Option<String>,
+        #[arg(long, value_name = "DIR", help = "Custom path for 'custom' harness")]
+        path: Option<PathBuf>,
     },
     #[command(about = "Show detected skill install locations and status")]
     Doctor,
@@ -67,12 +66,10 @@ fn main() {
         Commands::Update { check } => cmd_update(check),
         Commands::Upgrade { check } => cmd_update(check),
         Commands::Install {
-            cursor,
-            claude,
-            codex,
+            harness,
+            scope,
             path,
-            target,
-        } => cmd_install(cursor, claude, codex, path.or(target)),
+        } => cmd_install(harness, scope, path),
         Commands::Doctor => cmd_doctor(),
     };
 
@@ -83,7 +80,7 @@ fn main() {
 }
 
 fn cmd_version(yes: bool) -> Result<(), Box<dyn std::error::Error>> {
-    println!("tap {}", VERSION);
+    println!("tap-skill {}", VERSION);
 
     let latest = match fetch_latest_version() {
         Ok(v) => v,
@@ -96,25 +93,25 @@ fn cmd_version(yes: bool) -> Result<(), Box<dyn std::error::Error>> {
 
     if yes {
         do_update()?;
-        println!("update: tap upgraded {} -> {}", VERSION, latest);
+        println!("update: tap-skill upgraded {} -> {}", VERSION, latest);
         return Ok(());
     }
 
     if !io::stdin().is_terminal() {
         println!(
-            "update available: {} — run `tap update`, or `tap version --yes` to update now",
+            "update available: {} — run `tap-skill update`, or `tap-skill version --yes` to update now",
             latest
         );
         return Ok(());
     }
 
-    print!("update available: {} — run tap update, or --yes to update now [y/N] ", latest);
+    print!("update available: {} — run tap-skill update, or --yes to update now [y/N] ", latest);
     io::stdout().flush()?;
     let mut line = String::new();
     io::stdin().read_line(&mut line)?;
     if matches!(line.trim(), "y" | "Y" | "yes" | "YES") {
         do_update()?;
-        println!("update: tap upgraded {} -> {}", VERSION, latest);
+        println!("update: tap-skill upgraded {} -> {}", VERSION, latest);
     }
     Ok(())
 }
@@ -125,11 +122,11 @@ fn cmd_update(check: bool) -> Result<(), Box<dyn std::error::Error>> {
 
     if check {
         println!(
-            "package: tap\ncurrent: {}\nlatest: {}\navailable: {}",
+            "package: tap-skill\ncurrent: {}\nlatest: {}\navailable: {}",
             VERSION, latest, available
         );
         if available {
-            println!("\nRun `tap update` to upgrade");
+            println!("\nRun `tap-skill update` to upgrade");
         } else {
             println!("\nAlready up to date");
         }
@@ -137,12 +134,12 @@ fn cmd_update(check: bool) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if !available {
-        println!("ok: tap already at latest ({})", VERSION);
+        println!("ok: tap-skill already at latest ({})", VERSION);
         return Ok(());
     }
 
     do_update()?;
-    println!("update: tap upgraded {} -> {}", VERSION, latest);
+    println!("update: tap-skill upgraded {} -> {}", VERSION, latest);
     Ok(())
 }
 
@@ -174,7 +171,7 @@ fn semver_cmp(a: &str, b: &str) -> Ordering {
 }
 
 fn fetch_latest_version() -> Result<String, Box<dyn std::error::Error>> {
-    let url = "https://api.github.com/repos/thalixinc/tap/contents/Cargo.toml";
+    let url = "https://api.github.com/repos/thalixinc/tap-skill/contents/Cargo.toml";
     let out = Command::new("curl")
         .args([
             "-fsSL",
@@ -200,52 +197,151 @@ fn fetch_latest_version() -> Result<String, Box<dyn std::error::Error>> {
 }
 
 fn cmd_install(
-    cursor: bool,
-    claude: bool,
-    codex: bool,
-    custom: Option<PathBuf>,
+    harness_arg: Option<Vec<String>>,
+    scope_arg: Option<String>,
+    path: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let targets = determine_install_targets(cursor, claude, codex, custom)?;
+    let is_interactive = io::stdin().is_terminal();
+
+    // Determine harnesses
+    let harnesses = if let Some(h) = harness_arg {
+        h
+    } else if is_interactive {
+        prompt_harnesses()?
+    } else {
+        return Err("Non-interactive mode requires --harness flag. Example: tap-skill install --harness cursor,claude --scope user".into());
+    };
+
+    // Determine scope
+    let scope = if let Some(s) = scope_arg {
+        match s.as_str() {
+            "user" => Scope::User,
+            "project" => Scope::Project,
+            _ => return Err(format!("Invalid scope '{}'. Must be 'user' or 'project'", s).into()),
+        }
+    } else if is_interactive {
+        prompt_scope()?
+    } else {
+        return Err("Non-interactive mode requires --scope flag. Example: tap-skill install --harness cursor --scope user".into());
+    };
+
+    // Resolve targets
+    let targets = resolve_install_targets(&harnesses, scope, path)?;
 
     if targets.is_empty() {
-        return Err("No install target specified. Use --cursor, --claude, --codex, or --path <dir>. Run `tap doctor` to see available locations.".into());
+        return Err("No install targets resolved. Check your harness selection.".into());
     }
 
+    // Install to each target
     for target in targets {
         install_to(&target)?;
-        println!("ok: installed TAP skill -> {}", target.display());
+        println!("ok: installed TAP skill -> {}/tap", target.display());
     }
 
     Ok(())
 }
 
-fn determine_install_targets(
-    cursor: bool,
-    claude: bool,
-    codex: bool,
-    custom: Option<PathBuf>,
+#[derive(Clone, Copy)]
+enum Scope {
+    User,
+    Project,
+}
+
+fn prompt_harnesses() -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    println!("Select harness(es) to install TAP skill:");
+    println!("  1) Cursor");
+    println!("  2) Claude (Claude Code / .claude)");
+    println!("  3) Codex");
+    println!("  4) Custom path (specify with --path)");
+    println!();
+    print!("Enter numbers (comma-separated, e.g., 1,2): ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    let selections: Vec<&str> = input.trim().split(',').map(|s| s.trim()).collect();
+    let mut harnesses = Vec::new();
+
+    for sel in selections {
+        match sel {
+            "1" => harnesses.push("cursor".to_string()),
+            "2" => harnesses.push("claude".to_string()),
+            "3" => harnesses.push("codex".to_string()),
+            "4" => harnesses.push("custom".to_string()),
+            _ => {
+                return Err(format!("Invalid selection: '{}'. Use 1, 2, 3, or 4", sel).into())
+            }
+        }
+    }
+
+    if harnesses.is_empty() {
+        return Err("No harness selected. Aborting.".into());
+    }
+
+    Ok(harnesses)
+}
+
+fn prompt_scope() -> Result<Scope, Box<dyn std::error::Error>> {
+    println!();
+    println!("Select scope:");
+    println!("  1) User (global: install to ~/.cursor/skills, etc.)");
+    println!("  2) Project (local: install to .cursor/skills in current directory)");
+    println!();
+    print!("Enter number (1 or 2): ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    match input.trim() {
+        "1" => Ok(Scope::User),
+        "2" => Ok(Scope::Project),
+        _ => Err(format!("Invalid selection: '{}'. Use 1 or 2", input.trim()).into()),
+    }
+}
+
+fn resolve_install_targets(
+    harnesses: &[String],
+    scope: Scope,
+    custom_path: Option<PathBuf>,
 ) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
     let mut targets = Vec::new();
 
-    if let Some(path) = custom {
-        targets.push(path);
-        return Ok(targets);
-    }
+    let base_dir = match scope {
+        Scope::User => std::env::var("HOME")
+            .map(PathBuf::from)
+            .map_err(|_| "HOME environment variable not set")?,
+        Scope::Project => std::env::current_dir()?,
+    };
 
-    let home = std::env::var("HOME").map(PathBuf::from)?;
-
-    if cursor || (!claude && !codex && !cursor) {
-        targets.push(home.join(".cursor/skills"));
-    }
-    if claude {
-        targets.push(home.join(".claude/skills"));
-    }
-    if codex {
-        targets.push(home.join(".codex/skills"));
+    for harness in harnesses {
+        match harness.as_str() {
+            "cursor" => targets.push(base_dir.join(".cursor/skills")),
+            "claude" => targets.push(base_dir.join(".claude/skills")),
+            "codex" => targets.push(base_dir.join(".codex/skills")),
+            "custom" => {
+                if let Some(ref p) = custom_path {
+                    targets.push(p.clone());
+                } else {
+                    return Err(
+                        "Custom harness selected but no --path provided. Use --path <dir>".into(),
+                    );
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "Unknown harness: '{}'. Use cursor, claude, codex, or custom",
+                    harness
+                )
+                .into())
+            }
+        }
     }
 
     Ok(targets)
 }
+
 
 fn install_to(target: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let tap_target = target.join("tap");
@@ -309,6 +405,6 @@ fn cmd_doctor() -> Result<(), Box<dyn std::error::Error>> {
         println!("{:12} {} -> {}", name, status, path.display());
     }
 
-    println!("\nTo install: tap install [--cursor|--claude|--codex|--path <dir>]");
+    println!("\nTo install: tap-skill install [--cursor|--claude|--codex|--path <dir>]");
     Ok(())
 }
