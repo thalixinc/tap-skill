@@ -29,93 +29,116 @@ The **Claim** is the top lock unit: a counsel-coined term for founder-lockable a
 ### Install TAP CLI
 
 ```bash
-cargo install --git https://github.com/thalixinc/tap
+cargo install --git https://github.com/thalixinc/tap-skill
 ```
 
 Or from a tagged release:
 
 ```bash
-cargo install --git https://github.com/thalixinc/tap --tag v0.1.0
+cargo install --git https://github.com/thalixinc/tap-skill --tag v0.1.0
 ```
 
 ### Install TAP Skill for Agents
 
-After installing the CLI, install the TAP skill into your agent skill directory:
+After installing the CLI, install the TAP skill into your agent skill directory.
+
+**Interactive mode (recommended):**
 
 ```bash
-# For Cursor
-tap install --cursor
-
-# For Claude
-tap install --claude
-
-# For Codex
-tap install --codex
-
-# Custom path
-tap install --path ~/.my-agent/skills
-
-# Or use --target (same as --path)
-tap install --target ~/custom-skills
+tap-skill install
 ```
 
-Check installation status:
+The CLI will prompt you to:
+1. Select harness(es): Cursor, Claude, Codex, or custom path (multi-select)
+2. Select scope: User (global `~/.cursor/skills`) or Project (local `.cursor/skills`)
+
+**Non-interactive mode (for scripts/CI):**
 
 ```bash
-tap doctor
+# Single harness, user scope
+tap-skill install --harness cursor --scope user
+
+# Multiple harnesses, user scope
+tap-skill install --harness cursor,claude,codex --scope user
+
+# Project scope (installs to .cursor/skills in current directory)
+tap-skill install --harness cursor --scope project
+
+# Custom path
+tap-skill install --harness custom --scope user --path ~/.my-agent/skills
+```
+
+**Check installation status:**
+
+```bash
+tap-skill doctor
 ```
 
 ---
 
 ## CLI Commands
 
-### `tap version`
+### `tap-skill version`
 
 Print version information and check for updates.
 
 ```bash
-tap version
+tap-skill version
 ```
 
 Auto-update if newer version available:
 
 ```bash
-tap version --yes
+tap-skill version --yes
 ```
 
-### `tap update` / `tap upgrade`
+### `tap-skill update` / `tap-skill upgrade`
 
 Update TAP to the latest version.
 
 ```bash
-tap update
+tap-skill update
 ```
 
 Check for updates without installing:
 
 ```bash
-tap update --check
+tap-skill update --check
 ```
 
-### `tap install`
+### `tap-skill install`
 
 Install TAP skill into an agent skill directory.
 
+**Interactive mode (prompts for harness + scope):**
+
 ```bash
-tap install --cursor    # Install to ~/.cursor/skills/tap
-tap install --claude    # Install to ~/.claude/skills/tap
-tap install --codex     # Install to ~/.codex/skills/tap
-tap install --path DIR  # Install to custom directory
+tap-skill install
 ```
 
-Default (no flags): installs to Cursor skill directory.
+Prompts:
+1. **Select harness(es):** Cursor, Claude, Codex, or custom (comma-separated numbers)
+2. **Select scope:** User (global) or Project (local)
 
-### `tap doctor`
+**Non-interactive mode (flags):**
+
+```bash
+# Required flags: --harness and --scope
+tap-skill install --harness cursor --scope user
+tap-skill install --harness cursor,claude --scope user
+tap-skill install --harness cursor --scope project
+tap-skill install --harness custom --scope user --path ~/.my-skills
+```
+
+**Harness values:** `cursor`, `claude`, `codex`, `custom` (comma-separated for multiple)  
+**Scope values:** `user` (global: `~/.cursor/skills/tap`) or `project` (local: `.cursor/skills/tap`)
+
+### `tap-skill doctor`
 
 Show detected skill install locations and installation status.
 
 ```bash
-tap doctor
+tap-skill doctor
 ```
 
 Example output:
@@ -127,7 +150,7 @@ Cursor       ✓ installed -> /home/user/.cursor/skills/tap
 Claude       ✗ not found -> /home/user/.claude/skills/tap
 Codex        ✗ not found -> /home/user/.codex/skills/tap
 
-To install: tap install [--cursor|--claude|--codex|--path <dir>]
+To install: tap-skill install [--cursor|--claude|--codex|--path <dir>]
 ```
 
 ---
@@ -433,13 +456,13 @@ cargo install --path .
 TAP supports self-update via `cargo install --git`:
 
 ```bash
-tap update
+tap-skill update
 ```
 
 Or auto-update on version check:
 
 ```bash
-tap version --yes
+tap-skill version --yes
 ```
 
 The update mechanism:
@@ -458,13 +481,13 @@ MIT License. See [LICENSE](LICENSE) file.
 
 ## Repository
 
-🔗 **https://github.com/thalixinc/tap**
+🔗 **https://github.com/thalixinc/tap-skill**
 
 ---
 
 ## Support
 
-- **Issues:** https://github.com/thalixinc/tap/issues
+- **Issues:** https://github.com/thalixinc/tap-skill/issues
 - **Docs:** See `docs/` directory and `skills/tap/SKILL.md`
 - **Examples:** Codefactory reference (see SKILL.md)
 
@@ -488,6 +511,6 @@ MIT License. See [LICENSE](LICENSE) file.
 
 ---
 
-**Install:** `cargo install --git https://github.com/thalixinc/tap`  
-**Use:** `tap install --cursor` (or `--claude` / `--codex`)  
-**Update:** `tap update`
+**Install:** `cargo install --git https://github.com/thalixinc/tap-skill`  
+**Use:** `tap-skill install` (interactive) or with flags  
+**Update:** `tap-skill update`
